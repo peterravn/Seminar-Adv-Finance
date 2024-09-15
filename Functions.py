@@ -53,3 +53,30 @@ def lagmatrix(data, lags):
     for lag in range(1, lags + 1):
         lagged_data[lag:, (lag - 1) * K:lag * K] = data[:T - lag, :]
     return lagged_data
+
+
+def sdummy(nobs,freq):
+    """
+    PURPOSE: creates a matrix of seasonal dummy variables
+    ---------------------------------------------------
+    USAGE: y = sdummy(nobs,freq)
+    where: freq = 4 for quarterly, 12 for monthly
+    ---------------------------------------------------
+    RETURNS:
+    y = an (nobs x freq) matrix with 0's and 1's
+    e.g., 1 0 0 0 (for freq=4)
+    0 1 0 0
+    0 0 1 0
+    0 0 0 1
+    1 0 0 0
+    ---------------------------------------------------
+    """
+
+    nobs_new = nobs + (freq - (nobs % freq))
+    seas = np.zeros([nobs_new,freq])
+    
+    for i in range(1, nobs_new, freq):
+        seas[i-1:i+freq-1,0:freq] = np.identity(freq)
+    
+    seas = seas[:nobs]
+    return seas
