@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import t
+import pandas as pd
 
 def VARlsExog(y, p, con, tr, exog):
     # Define dependent and independent variables for VAR estimation
@@ -80,3 +81,48 @@ def sdummy(nobs,freq):
     
     seas = seas[:nobs]
     return seas
+
+
+def pfind(y, pmax):
+    t, K = y.shape
+
+    # Construct regressor matrix and dependent variable
+    XMAX = np.ones((1, t - pmax))
+    
+    for i in range(1, pmax + 1):
+        XMAX = np.vstack([XMAX, y[pmax - i:t - i, :].T])
+
+    Y = y[pmax:t, :].T
+
+    aiccrit = np.zeros((pmax + 1, 1))
+    hqccrit = np.zeros((pmax + 1, 1))
+    siccrit = np.zeros((pmax + 1, 1))
+
+    # Evaluate criterion for p = 0,...,pmax
+    for j in range(0, pmax + 1):
+        m = j
+        T = t - pmax
+        X = XMAX[:j * K + 1, :]
+
+        B = Y @ X.T @ np.linalg.inv(X @ X.T)
+
+        SIGMA = (Y - B @ X) @ (Y - B @ X).T / T
+
+        aiccrit[j] = np.log(np.linalg.det(SIGMA)) + 2 / T * (m * K ** 2 + K)       # AIC value
+        hqccrit[j] = np.log(np.linalg.det(SIGMA)) + 2 * np.log(np.log(T)) / T * (m * K ** 2 + K)  # HQC value
+        siccrit[j] = np.log(np.linalg.det(SIGMA)) + np.log(T) / T * (m * K ** 2 + K)  # SIC value
+
+    # Rank models for p = 0,1,2,...,pmax
+    aichat = np.argmin(aiccrit)
+    hqchat = np.argmin(hqccrit)
+    sichat = np.argmin(siccrit)
+
+    infomat = np.hstack([siccrit, hqccrit, aiccrit])
+    m = np.arange(0, pmax + 1).reshape(-1, 1)
+    imat = np.hstack([m, infomat])
+
+    LagInformationValue = pd.DataFrame(imat, columns=['Lag', 'SIC', 'HQ', 'AIC'])
+    OptimalLag = pd.DataFrame([[sichat, hqchat, aichat]], columns=['SIC', 'HQ', 'AIC'])
+
+    return LagInformationValue, OptimalLag
+
