@@ -126,3 +126,45 @@ def pfind(y, pmax):
 
     return LagInformationValue, OptimalLag
 
+def smape(y_test, y_pred):
+    numerator = np.abs(y_pred - y_test)
+    denominator = (np.abs(y_test) + np.abs(y_pred)) / 2.0
+
+    epsilon = 1e-10  # A small constant to avoid division by zero
+    denominator = np.where(denominator == 0, epsilon, denominator)
+
+    # Calculate sMAPE
+    smape_values = numerator / denominator
+    smape = np.mean(smape_values) * 100
+
+    return smape
+
+
+
+def VARLMtest(y, p, con, tr, exog, h):
+
+    t, K = y.shape
+    Beta, SEbeta, CovBeta, Pvalue, tratioBeta, residuals_u, indep, SIGMA_u, aiccrit, hqccrit, siccrit = VARlsExog(y, p, con, tr, exog)
+    u_lags = lagmatrix(residuals_u, h)
+    Beta, SEbeta, CovBeta, Pvalue, tratioBeta, residuals_e, indep, SIGMA_e, aiccrit, hqccrit, siccrit = VARlsExog(y, p, con, tr, u_lags)
+    LML = (t - p)*(K-np.trace(np.linalg.inv(SIGMA_u) @ SIGMA_e));
+    LMLpval = 1-chi2.cdf(LML,h*K**2);
+
+    m = K * h
+    q = 1/2 * K * m - 1
+    s = ((K**2 * m**2 - 4) / (K**2 + m**2 - 5))**(1/2)
+    N = (t - p) - K * p - m - (1/2) * (K - m + 1)
+
+    FLMh = ((np.linalg.det(SIGMA_u) / np.linalg.det(SIGMA_e))**(1/s) - 1) * ((N * s - q) / (K * m))
+    FLMh_pval = 1 - f.cdf(FLMh, h * K**2, N * s - q)
+
+    
+    Results = [[LML, FLMh], [LMLpval, FLMh_pval], [h, h]]
+
+    lm_table = pd.DataFrame({
+        'Measure': pd.Categorical(['Test statistic', 'p-value', 'Lag order']),
+        'Breusch_Godfrey': [row[0] for row in Results],
+        'Edgerton_Shukur': [row[1] for row in Results]
+    })
+
+    return Results, lm_table
