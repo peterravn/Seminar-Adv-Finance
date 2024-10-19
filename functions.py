@@ -25,7 +25,7 @@ def VARlsExog(y, p, con, tr, exog):
     
     # Beta estimation
     Beta = np.linalg.inv(indep.T @ indep) @ indep.T @ dep
-    
+
     # Residuals
     res = dep - indep @ Beta
     
@@ -131,7 +131,7 @@ def smape(y_test, y_pred):
     numerator = np.abs(y_pred - y_test)
     denominator = (np.abs(y_test) + np.abs(y_pred)) / 2.0
 
-    epsilon = 1e-10  # A small constant to avoid division by zero
+    epsilon = 1e-32  # A small constant to avoid division by zero
     denominator = np.where(denominator == 0, epsilon, denominator)
 
     # Calculate sMAPE
