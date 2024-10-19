@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import t
 import pandas as pd
+import matplotlib.pyplot as plt
 
 def VARlsExog(y, p, con, tr, exog):
     # Define dependent and independent variables for VAR estimation
@@ -168,3 +169,19 @@ def VARLMtest(y, p, con, tr, exog, h):
     })
 
     return Results, lm_table
+
+
+def plot_actual_vs_predicted(y_test, predictions, graph_name):
+    plt.figure(figsize=(12, 6))
+    plt.plot(y_test[-168:], label='Actual', color='blue', alpha=1, linewidth=0.5)
+    plt.plot(predictions[-168:], label='Predicted', color='red', alpha=1, linewidth=0.5)
+    
+    plt.xlabel('Time', fontsize=12)
+    plt.ylabel('Value', fontsize=12)
+    plt.title(graph_name, fontsize=14)
+    
+    plt.legend()
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+    
+    plt.show()
