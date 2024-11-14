@@ -185,3 +185,24 @@ def plot_actual_vs_predicted(y_test, predictions, graph_name):
     plt.tight_layout()
     
     plt.show()
+
+def combine_24_hour_data(predictions_dict, y_test):
+    n_days = min(len(predictions_dict[hour]) for hour in range(24))
+
+    combined_predictions = []
+
+    for day in range(n_days):
+        for hour in range(24):
+            combined_predictions.append(predictions_dict[hour][day])
+
+    combined_predictions = np.array(combined_predictions).reshape(-1, 1)
+
+    combined_test = []
+        
+    for day in range(n_days):
+        for hour in range(24):
+            combined_test.append(y_test[hour][day])
+
+    combined_test = np.array(combined_test).reshape(-1, 1)
+
+    return combined_predictions, combined_test
