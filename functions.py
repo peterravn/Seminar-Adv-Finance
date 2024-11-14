@@ -185,3 +185,54 @@ def plot_actual_vs_predicted(y_test, predictions, graph_name):
     plt.tight_layout()
     
     plt.show()
+
+def combine_24_hour_data(predictions_dict, y_test):
+    n_days = min(len(predictions_dict[hour]) for hour in range(24))
+
+    combined_predictions = []
+
+    for day in range(n_days):
+        for hour in range(24):
+            combined_predictions.append(predictions_dict[hour][day])
+
+    combined_predictions = np.array(combined_predictions).reshape(-1, 1)
+
+    combined_test = []
+        
+    for day in range(n_days):
+        for hour in range(24):
+            combined_test.append(y_test[hour][day])
+
+    combined_test = np.array(combined_test).reshape(-1, 1)
+
+    return combined_predictions, combined_test
+
+
+def PCA_explained_variance(data, explained_variance_pct):
+    from sklearn.decomposition import PCA
+
+    data # shape: (n_samples, n_features)
+
+    # Calculate number components sufficient to explain X pct. of the variance in the data
+    pca = PCA()
+    pca.fit(data)
+    components = pca.components_ # return principal components matrix
+    eigvals_i = (pca.singular_values_) ** 2 # eigenvalues equals the squared singular values
+    explained_variance = np.cumsum(eigvals_i) / np.sum(eigvals_i) # computing cummulative the explained variance
+    n_components_explained_variance = min(np.where(explained_variance >= explained_variance_pct)[0]) + 1 # number of components to explain X pct. variance
+    explained_variance = np.array(list(enumerate(explained_variance, start=1))) # add index for n_components
+
+    # Perform PCA using the necessary number of components
+    pca = PCA(n_components = n_components_explained_variance)
+    X_pca = pca.fit_transform(data)
+    
+    # Reconstruct the original dataset from the PCA-transformed data
+    X_reconstructed = pca.inverse_transform(X_pca)
+    
+    # Calculate the residuals (difference between original and reconstructed data)
+    residuals = data - X_reconstructed
+    residual_error = np.linalg.norm(residuals, axis=1)  # Calculate the error norm for each sample
+
+    X_pca # shape: (n_samples, n_components)
+    
+    return X_pca, explained_variance, residual_error
