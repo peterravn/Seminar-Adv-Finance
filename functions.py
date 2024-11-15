@@ -208,31 +208,24 @@ def combine_24_hour_data(predictions_dict, y_test):
     return combined_predictions, combined_test
 
 
-def PCA_explained_variance(data, explained_variance_pct):
+def PCA_dimreduc(training_data, test_data, exp_var_pct):
     from sklearn.decomposition import PCA
 
-    data # shape: (n_samples, n_features)
+    # Compute mean (bias) of training data
+    PCA_bias = np.mean(training_data, axis=0)
 
-    # Calculate number components sufficient to explain X pct. of the variance in the data
+    # Find number of loadings mathcing the level of explained variance
     pca = PCA()
-    pca.fit(data)
-    components = pca.components_ # return principal components matrix
+    pca.fit(training_data)
+    components = pca.components_
     eigvals_i = (pca.singular_values_) ** 2 # eigenvalues equals the squared singular values
-    explained_variance = np.cumsum(eigvals_i) / np.sum(eigvals_i) # computing cummulative the explained variance
-    n_components_explained_variance = min(np.where(explained_variance >= explained_variance_pct)[0]) + 1 # number of components to explain X pct. variance
-    explained_variance = np.array(list(enumerate(explained_variance, start=1))) # add index for n_components
+    explained_variance_cumsum = np.array(list(enumerate((np.cumsum(eigvals_i) / np.sum(eigvals_i)), start=1))) # computing cummulative explained variancec with correct index
+    K_loadings = min(np.where(explained_variance_cumsum[:,1] >= exp_var_pct)[0]) + 1 # number of components to explain X pct. variance
 
-    # Perform PCA using the necessary number of components
-    pca = PCA(n_components = n_components_explained_variance)
-    X_pca = pca.fit_transform(data)
-    
-    # Reconstruct the original dataset from the PCA-transformed data
-    X_reconstructed = pca.inverse_transform(X_pca)
-    
-    # Calculate the residuals (difference between original and reconstructed data)
-    residuals = data - X_reconstructed
-    residual_error = np.linalg.norm(residuals, axis=1)  # Calculate the error norm for each sample
+    # Extract first K principal components (PCA loadings) necessary to match the chosen level of explained variance
+    PCA_loadings = components[0:K_loadings, :].T
 
-    X_pca # shape: (n_samples, n_components)
-    
-    return X_pca, explained_variance, residual_error
+    # Compute dimensinality reduced data by projecting the centered test_data onto the first K principal components
+    data_dimreduc = (test_data - PCA_bias) @ PCA_loadings
+
+    return data_dimreduc, PCA_loadings, PCA_bias, K_loadings, explained_variance_cumsum
