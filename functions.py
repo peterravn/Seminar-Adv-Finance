@@ -127,6 +127,38 @@ def pfind(y, pmax):
 
     return LagInformationValue, OptimalLag
 
+def out_of_sample_pred(y_test, y_pred):
+    y_pred_lagged = y_pred[168::]
+    y_test_lagged = y_test[168::]
+
+    # sMAPE Calculation
+    numerator = np.abs(y_pred_lagged - y_test_lagged)
+    denominator = (np.abs(y_test_lagged) + np.abs(y_pred_lagged)) / 2.0
+
+    epsilon = 1e-32  # A small constant to avoid division by zero
+    denominator = np.where(denominator == 0, epsilon, denominator)
+
+    smape_values = numerator / denominator
+    smape = np.mean(smape_values) * 100
+
+
+    # RMSE Calculation
+    mse = np.mean((y_pred_lagged - y_test_lagged) ** 2)
+    rmse = np.sqrt(mse)
+
+    # rMAE Calculation
+    y_naive = y_test[:-168]
+
+    numerator = np.mean(np.abs(y_test_lagged - y_pred_lagged))
+    denominator = np.mean(np.abs(y_test_lagged - y_naive))
+
+    epsilon = 1e-32
+    denominator = max(denominator, epsilon)
+
+    rmae = numerator / denominator * 100
+
+    return rmse, smape, rmae
+
 def smape(y_test, y_pred):
     numerator = np.abs(y_pred - y_test)
     denominator = (np.abs(y_test) + np.abs(y_pred)) / 2.0
@@ -140,9 +172,8 @@ def smape(y_test, y_pred):
 
     return smape
 
-
-
 def VARLMtest(y, p, con, tr, exog, h):
+    from scipy.stats import chi2, f
 
     t, K = y.shape
     Beta, SEbeta, CovBeta, Pvalue, tratioBeta, residuals_u, indep, SIGMA_u, aiccrit, hqccrit, siccrit = VARlsExog(y, p, con, tr, exog)
