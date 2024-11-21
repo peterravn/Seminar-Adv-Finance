@@ -203,7 +203,7 @@ def VARLMtest(y, p, con, tr, exog, h):
 
 
 def plot_actual_vs_predicted(y_test, predictions, graph_name):
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(8, 4))
     plt.plot(y_test[-168:], label='Actual', color='blue', alpha=1, linewidth=0.5)
     plt.plot(predictions[-168:], label='Predicted', color='red', alpha=1, linewidth=0.5)
     

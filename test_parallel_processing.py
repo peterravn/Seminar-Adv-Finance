@@ -31,8 +31,8 @@ for hour in range(24):
     pca_test[hour] = data_dimreduc
 
 # Define your parameters
-p, d, q = 1, 1, 1 
-P, D, Q, s = 1, 1, 1, 7 
+p, d, q = 1, 0, 0 
+P, D, Q, s = 0, 0, 0, 0 
 smoother_output = 0
 
 def process_hour(hour):
@@ -58,8 +58,10 @@ def process_hour(hour):
     return hour, predictions
 
 if __name__ == '__main__':
+    __spec__ = "ModuleSpec(name='builtins', loader=<class '_frozen_importlib.BuiltinImporter'>)"
     # Use a Pool to parallelize the process_hour function
-    with Pool() as pool:
+    with Pool(6) as pool:
+        print("Test")
         results = pool.map(process_hour, range(24))
     
     # Collect the predictions into a dictionary
