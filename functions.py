@@ -203,7 +203,7 @@ def VARLMtest(y, p, con, tr, exog, h):
 
 
 def plot_actual_vs_predicted(y_test, predictions, graph_name):
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(8, 4))
     plt.plot(y_test[-168:], label='Actual', color='blue', alpha=1, linewidth=0.5)
     plt.plot(predictions[-168:], label='Predicted', color='red', alpha=1, linewidth=0.5)
     
@@ -260,3 +260,115 @@ def PCA_dimreduc(training_data, test_data, exp_var_pct):
     data_dimreduc = (test_data - PCA_bias) @ PCA_loadings
 
     return data_dimreduc, PCA_loadings, PCA_bias, K_loadings, explained_variance_cumsum
+
+
+def deseasonalize(df, season_pattern):
+    import holidays
+    from sklearn.linear_model import LinearRegression
+    df = df.copy()
+
+    df['DATE'] = pd.to_datetime(df['DATE'])
+
+    df['weekday'] = df['DATE'].dt.weekday  # 0=Monday, 6=Sunday
+    df['Omega_t'] = df.groupby('weekday')['DK2_spot'].transform('mean')
+
+    df['is_weekend'] = df['DATE'].dt.weekday >= 5  # True for Saturday (5) and Sunday (6)
+
+    denmark_holidays = holidays.Denmark()
+
+    df['is_holiday'] = df['DATE'].apply(lambda x: x in denmark_holidays)
+
+    df['D_t'] = np.where(df['is_weekend'] | df['is_holiday'], 1, 0)
+
+    df['psi'] = 1
+
+    for i in range(1, 13):
+        df[f'M_{i}'] = np.where(df['DATE'].dt.month == i, 1, 0)
+
+    predictors = ['psi'] + ['D_t'] + [f'M_{i}' for i in range(2, 13)]  # D_t and M_2 to M_12
+
+    train_data = df[df['DATE'] < "2023-01-01"]
+    predict_data = df[df['DATE'] >= "2023-01-01"]
+
+    X_train = train_data[predictors]
+    y_train = train_data['DK2_spot']
+
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+
+    df['Xi_t'] = model.predict(df[predictors])
+
+    if season_pattern == "short":
+        df['deseasonalized'] = df['DK2_spot'] - df['Omega_t']
+        df['seasonal_component'] = df['Omega_t']
+
+    elif season_pattern == "long":
+        df['deseasonalized'] = df['DK2_spot'] - df['Xi_t']
+        df['seasonal_component'] = df['Xi_t']
+
+    elif season_pattern == "both":
+        df['deseasonalized'] = df['DK2_spot'] - df['Omega_t'] - df['Xi_t']
+        df['seasonal_component'] = df['Omega_t'] + df['Xi_t']
+    
+    return df
+
+
+def split_data_into_series(datasets, pca_percent, regex_choice):
+    import pandas as pd
+    from sklearn.preprocessing import StandardScaler
+
+    datasets_train = {hour: datasets[hour][(datasets[hour]['DATE'] >= '2014-01-01') & (datasets[hour]['DATE'] < '2023-01-01')] for hour in range(24)}
+    datasets_test = {hour: datasets[hour][datasets[hour]['DATE'] >= '2023-01-01'] for hour in range(24)}
+
+    y_train = {hour: datasets_train[hour]['DK2_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
+    y_test = {hour: datasets_test[hour]['DK2_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
+
+    y_train_deseason = {hour: datasets_train[hour]['deseasonalized'].to_numpy().reshape(-1, 1) for hour in range(24)}
+    y_test_deseason = {hour: datasets_test[hour]['deseasonalized'].to_numpy().reshape(-1, 1) for hour in range(24)}
+
+    y_train_season = {hour: datasets_train[hour]['seasonal_component'].to_numpy().reshape(-1, 1) for hour in range(24)}
+    y_test_season = {hour: datasets_test[hour]['seasonal_component'].to_numpy().reshape(-1, 1) for hour in range(24)}
+
+    exog_variables_train = {
+        hour: datasets_train[hour].filter(regex="^(sun_|wind_|temp_)").to_numpy()
+        for hour in range(24)
+    }
+
+    scalers = {}
+    exog_variables_train_stand = {}
+
+    # Fit and transform each hour’s data
+    for hour in range(24):
+        # Fit the scaler on the training data for the current hour
+        scaler = StandardScaler().fit(exog_variables_train[hour])
+        scalers[hour] = scaler  # Store the scaler for each hour
+        
+        # Transform the training data
+        exog_variables_train_stand[hour] = scaler.transform(exog_variables_train[hour])
+
+    exog_variables_test = {
+        hour: datasets_test[hour].filter(regex="^(sun_|wind_|temp_)").to_numpy()
+        for hour in range(24)
+    }
+
+    exog_variables_test_stand = {}
+
+    # Transform each hour’s test data using the corresponding scaler
+    for hour in range(24):
+        # Use the scaler fitted on the training data for this hour
+        exog_variables_test_stand[hour] = scalers[hour].transform(exog_variables_test[hour])
+        
+
+    pca_train = {}
+    pca_test = {}
+
+    for hour in range(24):
+        data_dimreduc, _, _, _, _ = PCA_dimreduc(exog_variables_train_stand[hour], exog_variables_train_stand[hour], pca_percent)
+        pca_train[hour] = data_dimreduc
+
+        data_dimreduc, _, _, _, _ = PCA_dimreduc(exog_variables_train_stand[hour], exog_variables_test_stand[hour], pca_percent)
+        pca_test[hour] = data_dimreduc
+        
+    return y_train, y_test, y_train_deseason, y_test_deseason, y_train_season, \
+        y_test_season, exog_variables_train, scalers, exog_variables_train_stand, \
+            exog_variables_test, exog_variables_test_stand, pca_train, pca_test
