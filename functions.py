@@ -330,7 +330,7 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
     y_test_season = {hour: datasets_test[hour]['seasonal_component'].to_numpy().reshape(-1, 1) for hour in range(24)}
 
     exog_variables_train = {
-        hour: datasets_train[hour].filter(regex="^(sun_|wind_|temp_)").to_numpy()
+        hour: datasets_train[hour].filter(regex=regex_choice).to_numpy()
         for hour in range(24)
     }
 
@@ -347,7 +347,7 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
         exog_variables_train_stand[hour] = scaler.transform(exog_variables_train[hour])
 
     exog_variables_test = {
-        hour: datasets_test[hour].filter(regex="^(sun_|wind_|temp_)").to_numpy()
+        hour: datasets_test[hour].filter(regex=regex_choice).to_numpy()
         for hour in range(24)
     }
 
@@ -372,3 +372,5 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
     return y_train, y_test, y_train_deseason, y_test_deseason, y_train_season, \
         y_test_season, exog_variables_train, scalers, exog_variables_train_stand, \
             exog_variables_test, exog_variables_test_stand, pca_train, pca_test
+
+
