@@ -2,6 +2,10 @@ import numpy as np
 from scipy.stats import t
 import pandas as pd
 import matplotlib.pyplot as plt
+import scipy.optimize as sci_optim # skal implementeres i funktionerne
+from sklearn.decomposition import PCA # skal implementeres i funktionerne
+
+
 
 def VARlsExog(y, p, con, tr, exog):
     # Define dependent and independent variables for VAR estimation
@@ -374,3 +378,197 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
             exog_variables_test, exog_variables_test_stand, pca_train, pca_test
 
 
+
+
+###########################
+# DAR 
+###########################
+
+# Estimate DAR
+def MLE_DAR(Y):
+    def loglikelihood_function(params):
+
+        rho, omega, alpha = params
+        
+        # define time t
+        T = len(Y)
+        max_lag = 1 # maximum lag in the model
+        start_index = -1 # set -1 since the latest time series observation is the last value in Y
+        stop_index = -(T-(max_lag - 1))
+        t = np.arange(start = start_index, stop = stop_index, step = -1)
+        
+        # Define function objects at time t
+        y = lambda t: (Y[t])
+        sigma = lambda t: np.sqrt(omega + alpha * (y(t-1) ** 2))
+        cond_mean = lambda t: rho * y(t-1)
+        
+        # compute sum of likelihood contributions
+        first_term = -1/2 * np.log(sigma(t)**2)
+        second_term = -1/2 * (y(t) - cond_mean(t))**2 / sigma(t)**2
+        L_t = np.sum(first_term + second_term)
+        
+        return -L_t
+    
+    # initialise parameters
+    rho_init = 0.0
+    omega_init = 0.05
+    alpha_init = 0.5
+    init_params = np.array([rho_init, omega_init, alpha_init])
+
+    # set parameter bounds
+    rho_bound = (0,None)
+    omega_bound = (0,None)
+    alpha_bound = (0,None)
+    bounds_params = (rho_bound, omega_bound, alpha_bound)
+
+    MLE_estimates = sci_optim.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
+
+    return MLE_estimates.x
+
+
+# Simulate DAR
+
+def DAR_sim(parameters, T, set_seed):
+    np.random.seed(set_seed)
+    rho, omega, alpha = parameters
+
+    max_lag = 1
+    
+    # Initialize arrays
+    Y = np.zeros(T)
+    Z = np.random.normal(loc=0, scale=1, size=T)
+
+    # Initialize the process
+    Y[0] = 1 
+
+    # Define function objects at time t
+    y = lambda t: Y[t]
+    z = lambda t: Z[t]
+    sigma = lambda t: np.sqrt(omega + alpha * Y[t-1]**2)
+    epsilon = lambda t: sigma(t) * z(t)
+
+    # The model
+    DAR = lambda t: rho * y(t-1) + epsilon(t)
+
+    # Update Y
+    for t in range(max_lag, T):
+        Y[t] = DAR(t)
+    return Y
+
+
+###########################
+# DARMA
+###########################
+
+# Estimate DARMA
+
+def MLE_DARMA(Y):
+
+    Y = Y.flatten()
+    T = len(Y)
+
+
+    def loglikelihood_function(params):
+
+        rho, omega, alpha, phi = params
+        
+        # define time t
+        max_lag = 2 # maximum lag in the model
+        start_index = -1 # set -1 since the latest time series observation is the last value in Y
+        stop_index = -(T-(max_lag - 1))
+        t = np.arange(start = start_index, stop = stop_index, step = -1)
+        
+        # Define function objects at time t
+        y = lambda t: (Y[t])
+        sigma = lambda t: np.sqrt(omega + alpha * y(t-1)**2)
+        beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
+        
+        cond_mean = lambda t: rho * y(t-1) + sigma(t) * beta(t-1)
+        
+        # compute sum of likelihood contributions
+        first_term = -1/2 * np.log(sigma(t)**2)
+        second_term = -1/2 * (y(t) - cond_mean(t))**2 / sigma(t)**2
+        L_t = np.sum(first_term + second_term)
+        
+        return -L_t
+    
+    # initialise parameters
+    rho_init = 0.0
+    omega_init = 0.05
+    alpha_init = 0.5
+    phi_init = 0.0
+    init_params = np.array([rho_init, omega_init, alpha_init, phi_init])
+
+    # set parameter bounds
+    rho_bound = (0,None)
+    omega_bound = (0.0001,None)
+    alpha_bound = (0,None)
+    phi_bound = (None,None)
+    bounds_params = (rho_bound, omega_bound, alpha_bound,phi_bound)
+
+    MLE_estimates = sci_optim.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
+
+    return MLE_estimates.x
+
+# Simulate DARMA
+
+def DARMA_sim(parameters, T, set_seed):
+    np.random.seed(set_seed)
+    rho, omega, alpha, phi = parameters
+
+    max_lag = 2
+    
+    # Initialize arrays
+    Y = np.zeros(T)
+    ETA = np.random.normal(loc=0, scale=1, size = T)
+
+    # Initialize the process
+    Y[0] = 1 
+
+    # Define function objects at time t
+    y = lambda t: Y[t]
+    eta = lambda t: ETA[t]
+    sigma = lambda t: np.sqrt(omega + alpha * y(t-1)**2)
+    beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
+    
+    # The model
+    DARMA = lambda t: rho * y(t-1) + sigma(t) * beta(t-1) + sigma(t) * eta(t)
+
+    # Recursively comput the model
+    for t in range(max_lag, T):
+        Y[t] = DARMA(t)
+    return Y
+
+# Forecast DARMA
+
+def DARMA_forecast(parameters, Y):
+    
+    rho, omega, alpha, phi = parameters
+
+    t = -1 # define start index 
+
+    # Define function objects at time t
+    y = lambda t: Y[t]
+    sigma = lambda t: np.sqrt(omega + alpha * y(t-1)**2)
+    beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
+
+    # Expected Mean
+    expected_mean = rho * y(t) + sigma(t+1) * beta(t)
+
+    return expected_mean
+
+def DARMA_forecast_array(parameters, Y):
+    T = len(Y) + 1
+    max_lag = 2
+
+    expected_mean_array = []
+    expected_mean_array.extend(np.nan for i in range(0, max_lag))
+    
+    for t in range(max_lag, T):
+        expected_mean_t = DARMA_forecast(parameters,Y[:t])
+        expected_mean_array.append(expected_mean_t)
+
+    
+    expected_mean_array = np.array(expected_mean_array)
+
+    return expected_mean_array
