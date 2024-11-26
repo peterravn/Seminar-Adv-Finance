@@ -380,9 +380,9 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
 
 
 
-###########################
-# DAR 
-###########################
+#######################################################################################################################################
+# DAR
+#######################################################################################################################################
 
 # Estimate DAR
 def MLE_DAR(Y):
@@ -456,9 +456,9 @@ def DAR_sim(parameters, T, set_seed):
     return Y
 
 
-###########################
+#######################################################################################################################################
 # DARMA
-###########################
+#######################################################################################################################################
 
 # Estimate DARMA
 
@@ -572,3 +572,97 @@ def DARMA_forecast_array(parameters, Y):
     expected_mean_array = np.array(expected_mean_array)
 
     return expected_mean_array
+
+
+#######################################################################################################################################
+# DARMA-X
+#######################################################################################################################################
+
+# Estimate DARMA-X
+
+def MLE_DARMAX(Y,X):
+
+    T = len(Y)
+    d = X.shape[1]
+    Y = Y.flatten()
+
+    def loglikelihood_function(parameters):
+
+        rho, omega, alpha, phi, *gamma = parameters
+        
+        # define time t
+        max_lag = 2 # maximum lag in the model
+        start_index = -1 # set -1 since the latest time series observation is the last value in Y
+        stop_index = -(T - (max_lag - 1))
+        t = np.arange(start = start_index, stop = stop_index, step = -1)
+        
+        # Define function objects at time t
+        y = lambda t: Y[t]
+        x = lambda t: X[t]
+        sigma = lambda t: np.sqrt(omega + alpha * y(t - 1) ** 2 + gamma @ (x(t-1)**2).T)
+        beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
+        
+        # Define conditional expectation and conditional variance at time t
+        cond_mean = lambda t: rho * y(t-1) + sigma(t) * beta(t-1)
+        cond_var = lambda t: sigma(t)**2
+        
+        # compute sum of likelihood contributions
+        first_term = -1/2 * np.log(cond_var(t))
+        second_term = -1/2 * (y(t) - cond_mean(t))**2 / cond_var(t)
+        L_t = np.sum(first_term + second_term)
+        
+        return -L_t
+    
+    # initialise parameters
+    rho_init = 0.5
+    omega_init = 0.05
+    alpha_init = 0.5
+    phi_init = 0.0
+    gamma_init = [0.5 for _ in range(d)]
+    init_params = np.concatenate([[rho_init, omega_init, alpha_init, phi_init], gamma_init])
+
+    # set parameter bounds
+    rho_bound = (None,None)
+    omega_bound = (0.0001,None)
+    alpha_bound = (0,None)
+    phi_bound = (None,None)
+    gamma_bound = [(0, None) for _ in range(d)]
+    bounds_params = (rho_bound, omega_bound, alpha_bound, phi_bound, *gamma_bound)
+
+    MLE_estimates = sci_optim.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
+
+    return MLE_estimates.x
+
+# Forecast DARMA-X
+
+def DARMAX_forecast(parameters, Y, X):
+    
+    rho, omega, alpha, phi, *gamma = parameters
+    #gamma = np.array(gamma)
+
+    t = -1 # define start index 
+
+    # Define function objects at time t
+    y = lambda t: Y[t]
+    x = lambda t: X[t]
+    sigma = lambda t: np.sqrt(omega + alpha * y(t-1) ** 2 + gamma @ (x(t-1)**2).T)
+    beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
+
+    # Expected Mean
+    expected_mean = rho * y(t) + sigma(t+1) * beta(t)
+    
+    return expected_mean.item()
+
+
+def DARMAX_forecast_array(parameters, Y, X):
+    T = len(Y)
+    max_lag = 2
+
+    expected_mean_array = []
+    expected_mean_array.extend(np.nan for i in range(0, max_lag))
+    
+    for t in range(max_lag, T):
+        expected_mean_t = DARMAX_forecast(parameters, Y[:t], X[:t])
+        expected_mean_array.append(expected_mean_t)
+    
+    return np.array(expected_mean_array) 
