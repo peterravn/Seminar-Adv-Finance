@@ -384,46 +384,243 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
 # DAR
 #######################################################################################################################################
 
-# Estimate DAR
-def MLE_DAR(Y):
-    def loglikelihood_function(params):
+# DAR class
 
-        rho, omega, alpha = params
-        
-        # define time t
+class DAR:
+    def __init__(self, p):
+        """
+        Initialize the DAR class
+        """
+        self.p = p
+        self.params = None
+        self.prams_num = 1 + 2 * self.p
+        self.loglikelihood_val = None
+
+    def t(self, Y):
         T = len(Y)
-        max_lag = 1 # maximum lag in the model
-        start_index = -1 # set -1 since the latest time series observation is the last value in Y
-        stop_index = -(T-(max_lag - 1))
-        t = np.arange(start = start_index, stop = stop_index, step = -1)
+        t = np.arange(start=-1, stop=-(T+1), step=-1)
+        return t
+
+    def Y(self, Y):
+        max_lag = self.p
+        Y = np.vstack([np.full((max_lag, 1), np.nan), Y.reshape(-1, 1)])
+        return Y
+
+    def y(self, Y):
+        Y = self.Y(Y)
+        y = lambda t: Y[t]
+        return y
+
+    def parse_params(self, params):
+        rho = params[:self.p]
+        omega = params[self.p]
+        alpha = params[self.p + 1:self.p + 1 + self.p]
         
-        # Define function objects at time t
-        y = lambda t: (Y[t])
-        sigma = lambda t: np.sqrt(omega + alpha * (y(t-1) ** 2))
-        cond_mean = lambda t: rho * y(t-1)
+        params_dict = {
+            "rho": rho,
+            "omega": omega,
+            "alpha": alpha,
+            }
+        return params_dict
+
+    def cond_mean(self, Y, params):
         
-        # compute sum of likelihood contributions
-        first_term = -1/2 * np.log(sigma(t)**2)
-        second_term = -1/2 * (y(t) - cond_mean(t))**2 / sigma(t)**2
-        L_t = np.sum(first_term + second_term)
+        rho = params["rho"]
         
-        return -L_t
+        y = self.y(Y)
+        cond_mean = lambda t: sum(rho[i] * y(t - (i + 1)) for i in range(self.p))
+        return cond_mean
+
+    def cond_var(self, Y, params):
+        
+        omega = params["omega"]
+        alpha = params["alpha"]
+
+        y = self.y(Y)
+        cond_var = lambda t: omega + sum(alpha[i] * y(t - (i + 1))**2 for i in range(self.p))
+        return cond_var
+
+    def fit_normal(self, Y):
+
+        t = self.t(Y)
+        y = self.y(Y)
+        
+        def MLE(params):
+
+            params = self.parse_params(params)
+            cond_mean = self.cond_mean(Y, params)
+            cond_var = self.cond_var(Y, params)
+
+            l_t = -1/2 * ( np.log(cond_var(t)) + (y(t) - cond_mean(t))**2 / cond_var(t))
+            L_t = np.nansum(l_t)
+            return -L_t
+
+        # Initialize parameters
+        rho_init = [0.0] * self.p
+        omega_init = [0.05]
+        alpha_init = [0.5] * self.p
+        init_params = rho_init + omega_init + alpha_init
+
+        # Set parameter bounds
+        rho_bound = [(None, None)] * self.p
+        omega_bound = [(0.001, None)]
+        alpha_bound = [(0.001, None)] * self.p
+        bounds_params = rho_bound + omega_bound + alpha_bound
+
+        result = scipy.optimize.minimize(MLE, init_params, method='SLSQP', bounds=bounds_params)
+
+        # store parameters
+        self.params = self.parse_params(result.x)
+        return self
     
-    # initialise parameters
-    rho_init = 0.0
-    omega_init = 0.05
-    alpha_init = 0.5
-    init_params = np.array([rho_init, omega_init, alpha_init])
+    def fit_student(self, Y):
 
-    # set parameter bounds
-    rho_bound = (0,None)
-    omega_bound = (0,None)
-    alpha_bound = (0,None)
-    bounds_params = (rho_bound, omega_bound, alpha_bound)
+        t = self.t(Y)
+        y = self.y(Y)
 
-    MLE_estimates = sci_optim.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
+        def MLE(params):
+            
+            nu = params[-1]
+            params = self.parse_params(params[:-1])
 
-    return MLE_estimates.x
+            cond_mean = self.cond_mean(Y, params)
+            cond_var = self.cond_var(Y, params)
+
+            # Log-likelihood for Student-t
+            term1 = -0.5 * np.log(cond_var(t) * (nu - 2) * np.pi)
+            term2 = gammaln((nu + 1) / 2) - gammaln(nu / 2)
+            term3 = -((nu + 1) / 2) * np.log(1 + ((y(t) - cond_mean(t)) ** 2) / (cond_var(t) * (nu - 2)))
+            
+            l_t = term1 + term2 + term3 
+            L_t = np.nansum(l_t)
+            
+            return -L_t
+
+        # Initialize parameters
+        rho_init = [0.0] * self.p
+        omega_init = [0.05]
+        alpha_init = [0.5] * self.p
+        nu_init = [5]
+        init_params = rho_init + omega_init + alpha_init + nu_init
+
+        # Set parameter bounds
+        rho_bound = [(None, None)] * self.p
+        omega_bound = [(0.001, None)]
+        alpha_bound = [(0.001, None)] * self.p
+        nu_bound = [(2.0001, None)]
+        bounds_params = rho_bound + omega_bound + alpha_bound + nu_bound
+
+        # Perform optimization
+        result = scipy.optimize.minimize(MLE, init_params, method='SLSQP', bounds=bounds_params)
+
+        # Store parameters
+        self.params = {**self.parse_params(result.x[:-1]), "nu": result.x[-1]}
+        return self
+    
+    def fit(self, Y, dist = "normal"):
+
+        t = self.t(Y)
+        y = self.y(Y)
+
+        def MLE(params):
+            
+            if dist == "student-t":
+                nu = params[-1]
+                params = self.parse_params(params[:-1])
+            
+            else:
+                params = self.parse_params(params)
+            
+            cond_mean = self.cond_mean(Y, params)
+            cond_var = self.cond_var(Y, params)
+
+            if dist == "normal":
+                l_t = -1/2 * (np.log(cond_var(t)) + (y(t) - cond_mean(t))**2 / cond_var(t))
+            
+            elif dist == "student-t":
+                term1 = -0.5 * np.log(cond_var(t) * (nu - 2) * np.pi)
+                term2 = gammaln((nu + 1) / 2) - gammaln(nu / 2)
+                term3 = -((nu + 1) / 2) * np.log(1 + ((y(t) - cond_mean(t)) ** 2) / (cond_var(t) * (nu - 2)))
+                l_t = term1 + term2 + term3
+
+            else:
+                raise ValueError("dist must be 'normal' or 'student-t'")
+            
+            L_t = np.nansum(l_t)
+            return -L_t
+        
+        # Initialize parameters
+        rho_init = [0.0] * self.p
+        omega_init = [0.05]
+        alpha_init = [0.5] * self.p
+        init_params = rho_init + omega_init + alpha_init
+
+        # Set parameter bounds
+        rho_bound = [(None, None)] * self.p
+        omega_bound = [(0.001, None)]
+        alpha_bound = [(0.001, None)] * self.p
+        bounds_params = rho_bound + omega_bound + alpha_bound
+
+        # studen-t degrees of freedom
+        nu_init = [5]
+        nu_bound = [(2.0001, None)]
+        
+        if dist == "student-t":
+            init_params += nu_init
+            bounds_params += nu_bound
+        
+        # opminise the loglikelihood function
+        result = scipy.optimize.minimize(MLE, init_params, method='SLSQP', bounds=bounds_params)
+        
+        # store parameters
+        if dist == "student-t":
+            self.params = {**self.parse_params(result.x[:-1]), "nu": result.x[-1]}
+        else:
+            self.params = self.parse_params(result.x)
+
+        # store loglikelihood value
+        self.loglikelihood_val = -result.fun
+        
+        return self
+
+    def std_residuals(self, Y):
+        t = self.t(Y)
+        y = self.y(Y)
+
+        cond_mean = self.cond_mean(Y, self.params)
+        cond_var = self.cond_var(Y, self.params)
+
+        z = lambda t: (y(t) - cond_mean(t)) / np.sqrt(cond_var(t))
+        return np.flip(z(t))
+
+    def predict(self, Y):
+        
+        t = self.t(Y)
+        cond_mean = self.cond_mean(Y, self.params)
+        return np.flip(np.append(cond_mean(t+1), np.nan)).reshape(-1,1)
+    
+    def CI(self, Y, alpha_level = 0.05, dist = "normal"):
+
+        t = self.t(Y)
+        cond_mean = self.cond_mean(Y, self.params)
+        cond_var = self.cond_var(Y, self.params)
+
+        if dist == "normal":
+            z_val = norm.ppf(1 - alpha_level / 2)
+
+        elif dist == "student-t":
+            nu = self.params["nu"]
+            z_val = student_t.ppf(1 - alpha_level / 2, df = nu) * np.sqrt((nu - 2) / nu)
+        
+        else:
+            raise ValueError("dist must be 'normal' or 'student-t'")
+        
+
+        CI = lambda t: np.column_stack((cond_mean(t) + z_val * np.sqrt(cond_var(t)), 
+                                        cond_mean(t) - z_val * np.sqrt(cond_var(t))
+                                        ))
+        
+        return np.vstack((np.full((1, 2), np.nan), np.flip(CI(t+1))))
 
 
 # Simulate DAR
