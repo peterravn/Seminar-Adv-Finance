@@ -755,7 +755,7 @@ def DARMA_forecast(parameters, Y):
     return expected_mean
 
 def DARMA_forecast_array(parameters, Y):
-    T = len(Y) + 1
+    T = len(Y)
     max_lag = 2
 
     expected_mean_array = []
