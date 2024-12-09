@@ -402,22 +402,23 @@ class DAR:
         """
         self.p = p
         self.params = None
-        self.prams_num = 1 + 2 * self.p
-        self.loglikelihood_val = None
+        self.num_params = 1 + 2 * self.p
+        self.loglike_val = None
 
     def t(self, Y):
         T = len(Y)
+        self.T = T
         t = np.arange(start=-1, stop=-(T+1), step=-1)
+        
         return t
-
-    def Y(self, Y):
-        max_lag = self.p
-        Y = np.vstack([np.full((max_lag, 1), np.nan), Y.reshape(-1, 1)])
-        return Y
-
+    
     def y(self, Y):
-        Y = self.Y(Y)
-        y = lambda t: Y[t]
+        
+        max_lag = self.p 
+
+        Y = np.vstack((np.full((max_lag, Y.shape[1]), np.nan), Y))
+        y = lambda t: Y[t,:]
+        
         return y
 
     def parse_params(self, params):
@@ -432,107 +433,33 @@ class DAR:
             }
         return params_dict
 
-    def cond_mean(self, Y, params):
-        
-        rho = params["rho"]
-        
-        y = self.y(Y)
-        cond_mean = lambda t: sum(rho[i] * y(t - (i + 1)) for i in range(self.p))
-        return cond_mean
-
-    def cond_var(self, Y, params):
+    def cond_var(self, Y, params = None):
         
         omega = params["omega"]
         alpha = params["alpha"]
 
         y = self.y(Y)
-        cond_var = lambda t: omega + sum(alpha[i] * y(t - (i + 1))**2 for i in range(self.p))
-        return cond_var
-
-    def fit_normal(self, Y):
-
-        t = self.t(Y)
-        y = self.y(Y)
         
-        def MLE(params):
-
-            params = self.parse_params(params)
-            cond_mean = self.cond_mean(Y, params)
-            cond_var = self.cond_var(Y, params)
-
-            l_t = -1/2 * ( np.log(cond_var(t)) + (y(t) - cond_mean(t))**2 / cond_var(t))
-            L_t = np.nansum(l_t)
-            return -L_t
-
-        # Initialize parameters
-        rho_init = [0.0] * self.p
-        omega_init = [0.05]
-        alpha_init = [0.5] * self.p
-        init_params = rho_init + omega_init + alpha_init
-
-        # Set parameter bounds
-        rho_bound = [(None, None)] * self.p
-        omega_bound = [(0.001, None)]
-        alpha_bound = [(0.001, None)] * self.p
-        bounds_params = rho_bound + omega_bound + alpha_bound
-
-        result = scipy.optimize.minimize(MLE, init_params, method='SLSQP', bounds=bounds_params)
-
-        # store parameters
-        self.params = self.parse_params(result.x)
-        return self
+        cond_var = lambda t: omega + sum(alpha[i-1] * y(t-i)**2 for i in range(1, self.p+1))
+        
+        return cond_var
     
-    def fit_student(self, Y):
-
-        t = self.t(Y)
+    def cond_mean(self, Y, params = None):
+        
+        rho = params["rho"]
+        
         y = self.y(Y)
-
-        def MLE(params):
-            
-            nu = params[-1]
-            params = self.parse_params(params[:-1])
-
-            cond_mean = self.cond_mean(Y, params)
-            cond_var = self.cond_var(Y, params)
-
-            # Log-likelihood for Student-t
-            term1 = -0.5 * np.log(cond_var(t) * (nu - 2) * np.pi)
-            term2 = gammaln((nu + 1) / 2) - gammaln(nu / 2)
-            term3 = -((nu + 1) / 2) * np.log(1 + ((y(t) - cond_mean(t)) ** 2) / (cond_var(t) * (nu - 2)))
-            
-            l_t = term1 + term2 + term3 
-            L_t = np.nansum(l_t)
-            
-            return -L_t
-
-        # Initialize parameters
-        rho_init = [0.0] * self.p
-        omega_init = [0.05]
-        alpha_init = [0.5] * self.p
-        nu_init = [5]
-        init_params = rho_init + omega_init + alpha_init + nu_init
-
-        # Set parameter bounds
-        rho_bound = [(None, None)] * self.p
-        omega_bound = [(0.001, None)]
-        alpha_bound = [(0.001, None)] * self.p
-        nu_bound = [(2.0001, None)]
-        bounds_params = rho_bound + omega_bound + alpha_bound + nu_bound
-
-        # Perform optimization
-        result = scipy.optimize.minimize(MLE, init_params, method='SLSQP', bounds=bounds_params)
-
-        # Store parameters
-        self.params = {**self.parse_params(result.x[:-1]), "nu": result.x[-1]}
-        return self
+        cond_mean = lambda t: sum(rho[i-1] * y(t-i) for i in range(1, self.p + 1))
+        return cond_mean
     
     def fit(self, Y, dist = "normal"):
 
         t = self.t(Y)
-        y = self.y(Y)
 
         def MLE(params):
             
+            y = self.y(Y)
+
             if dist == "student-t":
                 nu = params[-1]
                 params = self.parse_params(params[:-1])
@@ -588,11 +515,12 @@ class DAR:
             self.params = self.parse_params(result.x)
 
         # store loglikelihood value
-        self.loglikelihood_val = -result.fun
+        self.loglike_val = -result.fun
         
         return self
 
-    def std_residuals(self, Y):
+    def std_res(self, Y):
+        
         t = self.t(Y)
         y = self.y(Y)
 
@@ -605,7 +533,9 @@ class DAR:
     def predict(self, Y):
         
         t = self.t(Y)
+        
         cond_mean = self.cond_mean(Y, self.params)
+        
         return np.flip(np.append(cond_mean(t+1), np.nan)).reshape(-1,1)
     
     def CI(self, Y, alpha_level = 0.05, dist = "normal"):
@@ -663,58 +593,198 @@ def DAR_sim(parameters, T, set_seed):
 
 
 #######################################################################################################################################
-# DARMA
+# DARMA-X
 #######################################################################################################################################
 
-# Estimate DARMA
+# DARMA-X class
 
-def MLE_DARMA(Y):
-
-    Y = Y.flatten()
-    T = len(Y)
-
-
-    def loglikelihood_function(params):
-
-        rho, omega, alpha, phi = params
-        
-        # define time t
-        max_lag = 2 # maximum lag in the model
-        start_index = -1 # set -1 since the latest time series observation is the last value in Y
-        stop_index = -(T-(max_lag - 1))
-        t = np.arange(start = start_index, stop = stop_index, step = -1)
-        
-        # Define function objects at time t
-        y = lambda t: (Y[t])
-        sigma = lambda t: np.sqrt(omega + alpha * y(t-1)**2)
-        beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
-        
-        cond_mean = lambda t: rho * y(t-1) + sigma(t) * beta(t-1)
-        
-        # compute sum of likelihood contributions
-        first_term = -1/2 * np.log(sigma(t)**2)
-        second_term = -1/2 * (y(t) - cond_mean(t))**2 / sigma(t)**2
-        L_t = np.sum(first_term + second_term)
-        
-        return -L_t
+class DARMAX:
+    def __init__(self, p):
+        """
+        Initialize the DARMA-X class
+        """
+        self.p = p
+        self.d = 0
+        self.num_params = None
+        self.params = None
+        self.loglike_val = None
+        self.T = None
     
-    # initialise parameters
-    rho_init = 0.0
-    omega_init = 0.05
-    alpha_init = 0.5
-    phi_init = 0.0
-    init_params = np.array([rho_init, omega_init, alpha_init, phi_init])
+    def t(self, Y):
+        T = len(Y)
+        self.T = T
+        t = np.arange(start=-1, stop=-(T+1), step=-1)
+        
+        return t
+    
+    def y(self, Y):
+        
+        max_lag = self.p + 1
 
-    # set parameter bounds
-    rho_bound = (0,None)
-    omega_bound = (0.0001,None)
-    alpha_bound = (0,None)
-    phi_bound = (None,None)
-    bounds_params = (rho_bound, omega_bound, alpha_bound,phi_bound)
+        Y = np.vstack((np.full((max_lag, Y.shape[1]), np.nan), Y))
+        y = lambda t: Y[t,:]
+        
+        return y
+    
+    def x(self, X = None):
 
-    MLE_estimates = scipy.optimize.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
+        max_lag = self.p + 1
 
-    return MLE_estimates.x
+        if X is None:
+            x = lambda t: np.zeros((self.d,))
+        else:
+            X = np.vstack((np.full((max_lag, X.shape[1]), np.nan), X))
+            x = lambda t: X[t, :]
+        
+        return x
+
+    def parse_params(self, params):
+        p, d = self.p, self.d
+
+        rho = params[:p]
+        omega, phi = params[p], params[p + 1]
+        alpha = params[p + 2:p + 2 + p]
+        gamma = params[p + 2 + p:p + 2 + p + p * d].reshape(p, d) if p * d > 0 else np.zeros((p, d))
+        nu = params[-1] if len(params) > p + 2 + p + p * d else None
+
+        return {
+            "rho": rho,
+            "omega": omega,
+            "phi": phi,
+            "alpha": alpha,
+            "gamma": gamma,
+            **({"nu": nu} if nu is not None else {})
+        }
+
+    def cond_var(self, Y, X = None, params = None):
+        
+        omega = params["omega"]
+        alpha = params["alpha"]
+        gamma = params["gamma"]
+
+        y = self.y(Y)
+        x = self.x(X)
+
+        sigma = lambda t: np.sqrt(omega
+                                  + sum(alpha[i-1] * y(t-i)**2 for i in range(1, self.p+1))
+                                  + sum((gamma[i-1] @ x(t-i).T**2).reshape(-1, 1) for i in range(1, self.p+1))
+                                  )
+        
+        cond_var = lambda t: sigma(t)**2
+
+        return cond_var
+    
+    def cond_mean(self, Y, X = None, params = None):
+  
+        rho = params["rho"]
+        omega = params["omega"]
+        alpha = params["alpha"]
+        gamma = params["gamma"]
+        phi = params["phi"]
+
+        y = self.y(Y)
+        x = self.x(X)
+        
+        sigma = lambda t: np.sqrt(omega
+                                  + sum(alpha[i-1] * y(t-i)**2 for i in range(1, self.p+1))
+                                  + sum((gamma[i-1] @ x(t-i).T**2).reshape(-1, 1) for i in range(1, self.p+1))
+                                  )
+        
+        beta = lambda t: phi * (y(t) - sum(rho[i-1] * y(t-i) for i in range(1, self.p + 1))) / sigma(t)
+
+        cond_mean = lambda t: sum(rho[i-1] * y(t-i) for i in range(1, self.p + 1)) + sigma(t) * beta(t-1)
+
+        return cond_mean
+    
+    def fit(self, Y, X = None, dist = "normal"):
+
+        t = self.t(Y)
+        self.d = 0 if X is None else X.shape[1]
+        self.num_params = 2 + (2 + self.d) * self.p + (1 if dist == "student-t" else 0)
+        
+        def MLE(params):
+            
+            params = self.parse_params(params)
+            
+            y = self.y(Y)
+            cond_var = self.cond_var(Y, X, params)
+            cond_mean = self.cond_mean(Y, X, params)
+
+            if dist == "normal":
+                l_t = -1/2 * (np.log(cond_var(t)) + (y(t) - cond_mean(t))**2 / cond_var(t))
+            
+            elif dist == "student-t":
+                nu = params["nu"]  # Degrees of freedom
+                term1 = -0.5 * np.log(cond_var(t) * (nu - 2) * np.pi)
+                term2 = gammaln((nu + 1) / 2) - gammaln(nu / 2)
+                term3 = -((nu + 1) / 2) * np.log(1 + ((y(t) - cond_mean(t))**2) / (cond_var(t) * (nu - 2)))
+                l_t = term1 + term2 + term3
+
+            else:
+                raise ValueError("dist must be 'normal' or 'student-t'")
+            
+            L_t = np.nansum(l_t)
+            return -L_t
+        
+        init_params = np.full(self.num_params, 0.5)
+        if dist == "student-t":
+            init_params[-1] = 3  # Set nu to 3 explicitly
+        
+        bounds = ([(None, None)] * self.p  # rho
+                + [(1e-6, None)]  # omega
+                + [(1e-6, 1 - 1e-6)]  # phi
+                + [(1e-6, None)] * self.p  # alpha
+                + [(1e-6, None)] * (self.p * self.d)  # gamma
+                + ([(2 + 1e-6, None)] if dist == "student-t" else [])  # nu (degrees of freedom) if student-t
+                )
+        
+        result = scipy.optimize.minimize(MLE, init_params, method = "SLSQP", bounds = bounds)
+        self.params = self.parse_params(result.x)
+        self.loglike_val = -result.fun
+        
+        return self
+    
+    def std_res(self, Y, X = None):
+        
+        t = self.t(Y)
+        y = self.y(Y)
+
+        cond_mean = self.cond_mean(Y, X, self.params)
+        cond_var = self.cond_var(Y, X, self.params)
+
+        z = lambda t: (y(t) - cond_mean(t)) / np.sqrt(cond_var(t))
+        return np.flip(z(t))
+
+    def predict(self, Y, X = None):
+        
+        t = self.t(Y)
+        
+        cond_mean = self.cond_mean(Y, X, self.params)
+        
+        return np.flip(np.append(cond_mean(t+1), np.nan)).reshape(-1,1)
+        
+    def CI(self, Y, X = None, alpha_level = 0.05, dist = "normal"):
+
+        t = self.t(Y)
+        cond_mean = self.cond_mean(Y, X, self.params)
+        cond_var = self.cond_var(Y, X, self.params)
+
+        if dist == "normal":
+            z_val = norm.ppf(1 - alpha_level / 2)
+
+        elif dist == "student-t":
+            nu = self.params["nu"]
+            z_val = student_t.ppf(1 - alpha_level / 2, df = nu) * np.sqrt((nu - 2) / nu)
+        
+        else:
+            raise ValueError("dist must be 'normal' or 'student-t'")
+        
+
+        CI = lambda t: np.column_stack((cond_mean(t) + z_val * np.sqrt(cond_var(t)), 
+                                        cond_mean(t) - z_val * np.sqrt(cond_var(t))
+                                        ))
+        
+        return np.vstack((np.full((1, 2), np.nan), np.flip(CI(t+1))))
 
 # Simulate DARMA
 
@@ -745,130 +815,4 @@ def DARMA_sim(parameters, T, set_seed):
         Y[t] = DARMA(t)
     return Y
 
-# Forecast DARMA
 
-def DARMA_forecast(parameters, Y):
-    
-    rho, omega, alpha, phi = parameters
-
-    t = -1 # define start index 
-
-    # Define function objects at time t
-    y = lambda t: Y[t]
-    sigma = lambda t: np.sqrt(omega + alpha * y(t-1)**2)
-    beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
-
-    # Expected Mean
-    expected_mean = rho * y(t) + sigma(t+1) * beta(t)
-
-    return expected_mean
-
-def DARMA_forecast_array(parameters, Y):
-    T = len(Y)
-    max_lag = 2
-
-    expected_mean_array = []
-    expected_mean_array.extend(np.nan for i in range(0, max_lag))
-    
-    for t in range(max_lag, T):
-        expected_mean_t = DARMA_forecast(parameters,Y[:t])
-        expected_mean_array.append(expected_mean_t)
-
-    
-    expected_mean_array = np.array(expected_mean_array)
-
-    return expected_mean_array
-
-
-#######################################################################################################################################
-# DARMA-X
-#######################################################################################################################################
-
-# Estimate DARMA-X
-
-def MLE_DARMAX(Y,X):
-
-    T = len(Y)
-    d = X.shape[1]
-    Y = Y.flatten()
-
-    def loglikelihood_function(parameters):
-
-        rho, omega, alpha, phi, *gamma = parameters
-        
-        # define time t
-        max_lag = 2 # maximum lag in the model
-        start_index = -1 # set -1 since the latest time series observation is the last value in Y
-        stop_index = -(T - (max_lag - 1))
-        t = np.arange(start = start_index, stop = stop_index, step = -1)
-        
-        # Define function objects at time t
-        y = lambda t: Y[t]
-        x = lambda t: X[t]
-        sigma = lambda t: np.sqrt(omega + alpha * y(t - 1) ** 2 + gamma @ (x(t-1)**2).T)
-        beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
-        
-        # Define conditional expectation and conditional variance at time t
-        cond_mean = lambda t: rho * y(t-1) + sigma(t) * beta(t-1)
-        cond_var = lambda t: sigma(t)**2
-        
-        # compute sum of likelihood contributions
-        first_term = -1/2 * np.log(cond_var(t))
-        second_term = -1/2 * (y(t) - cond_mean(t))**2 / cond_var(t)
-        L_t = np.sum(first_term + second_term)
-        
-        return -L_t
-    
-    # initialise parameters
-    rho_init = 0.5
-    omega_init = 0.05
-    alpha_init = 0.5
-    phi_init = 0.0
-    gamma_init = [0.5 for _ in range(d)]
-    init_params = np.concatenate([[rho_init, omega_init, alpha_init, phi_init], gamma_init])
-
-    # set parameter bounds
-    rho_bound = (None,None)
-    omega_bound = (0.0001,None)
-    alpha_bound = (0,None)
-    phi_bound = (None,None)
-    gamma_bound = [(0, None) for _ in range(d)]
-    bounds_params = (rho_bound, omega_bound, alpha_bound, phi_bound, *gamma_bound)
-
-    MLE_estimates = scipy.optimize.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
-
-    return MLE_estimates.x
-
-# Forecast DARMA-X
-
-def DARMAX_forecast(parameters, Y, X):
-    
-    rho, omega, alpha, phi, *gamma = parameters
-    #gamma = np.array(gamma)
-
-    t = -1 # define start index 
-
-    # Define function objects at time t
-    y = lambda t: Y[t]
-    x = lambda t: X[t]
-    sigma = lambda t: np.sqrt(omega + alpha * y(t-1) ** 2 + gamma @ (x(t-1)**2).T)
-    beta = lambda t: phi * (y(t) - rho * y(t-1)) / sigma(t)
-
-    # Expected Mean
-    expected_mean = rho * y(t) + sigma(t+1) * beta(t)
-    
-    return expected_mean.item()
-
-
-def DARMAX_forecast_array(parameters, Y, X):
-    T = len(Y)
-    max_lag = 2
-
-    expected_mean_array = []
-    expected_mean_array.extend(np.nan for i in range(0, max_lag))
-    
-    for t in range(max_lag, T):
-        expected_mean_t = DARMAX_forecast(parameters, Y[:t], X[:t])
-        expected_mean_array.append(expected_mean_t)
-    
-    return np.array(expected_mean_array) 
