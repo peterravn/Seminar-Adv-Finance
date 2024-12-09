@@ -336,7 +336,7 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
     y_test_season = {hour: datasets_test[hour]['seasonal_component'].to_numpy().reshape(-1, 1) for hour in range(24)}
 
     exog_variables_train = {
-        hour: np.diff(datasets_train[hour].filter(regex=regex_choice).to_numpy(), 1, axis=0)
+        hour: datasets_train[hour].filter(regex=regex_choice).to_numpy()
         for hour in range(24)
     }
 
@@ -353,7 +353,7 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
         exog_variables_train_stand[hour] = scaler.transform(exog_variables_train[hour])
 
     exog_variables_test = {
-        hour: np.diff(datasets_test[hour].filter(regex=regex_choice).to_numpy(), 1, axis=0)
+        hour: datasets_test[hour].filter(regex=regex_choice).to_numpy()
         for hour in range(24)
     }
 
@@ -370,10 +370,10 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
 
     for hour in range(24):
         data_dimreduc, _, _, _, _ = PCA_dimreduc(exog_variables_train_stand[hour], exog_variables_train_stand[hour], pca_percent)
-        pca_train[hour] = prepend_nan(data_dimreduc)
+        pca_train[hour] = data_dimreduc
 
         data_dimreduc, _, _, _, _ = PCA_dimreduc(exog_variables_train_stand[hour], exog_variables_test_stand[hour], pca_percent)
-        pca_test[hour] = prepend_nan(data_dimreduc)
+        pca_test[hour] = data_dimreduc
 
     return y_train, y_test, y_train_deseason, y_test_deseason, y_train_season, \
         y_test_season, exog_variables_train, scalers, exog_variables_train_stand, \
@@ -732,7 +732,7 @@ class DARMAX:
         
         bounds = ([(None, None)] * self.p  # rho
                 + [(1e-6, None)]  # omega
-                + [(1e-6, 1 - 1e-6)]  # phi
+                + [(-1 + 1e-6, 1 - 1e-6)]  # phi
                 + [(1e-6, None)] * self.p  # alpha
                 + [(1e-6, None)] * (self.p * self.d)  # gamma
                 + ([(2 + 1e-6, None)] if dist == "student-t" else [])  # nu (degrees of freedom) if student-t
