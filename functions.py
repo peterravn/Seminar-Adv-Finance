@@ -2,9 +2,11 @@ import numpy as np
 from scipy.stats import t
 import pandas as pd
 import matplotlib.pyplot as plt
-import scipy.optimize as sci_optim # skal implementeres i funktionerne
+import scipy.optimize
 from sklearn.decomposition import PCA # skal implementeres i funktionerne
 
+from scipy.special import gammaln
+from scipy.stats import norm, t as student_t
 
 
 def VARlsExog(y, p, con, tr, exog):
@@ -703,7 +705,7 @@ def MLE_DARMA(Y):
     phi_bound = (None,None)
     bounds_params = (rho_bound, omega_bound, alpha_bound,phi_bound)
 
-    MLE_estimates = sci_optim.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
+    MLE_estimates = scipy.optimize.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
 
     return MLE_estimates.x
 
@@ -826,7 +828,7 @@ def MLE_DARMAX(Y,X):
     gamma_bound = [(0, None) for _ in range(d)]
     bounds_params = (rho_bound, omega_bound, alpha_bound, phi_bound, *gamma_bound)
 
-    MLE_estimates = sci_optim.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
+    MLE_estimates = scipy.optimize.minimize(loglikelihood_function, init_params, method='SLSQP', bounds = bounds_params)
 
     return MLE_estimates.x
 
