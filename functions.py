@@ -374,11 +374,18 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
 
         data_dimreduc, _, _, _, _ = PCA_dimreduc(exog_variables_train_stand[hour], exog_variables_test_stand[hour], pca_percent)
         pca_test[hour] = data_dimreduc
-        
+
     return y_train, y_test, y_train_deseason, y_test_deseason, y_train_season, \
         y_test_season, exog_variables_train, scalers, exog_variables_train_stand, \
             exog_variables_test, exog_variables_test_stand, pca_train, pca_test
 
+
+def prepend_nan(data):
+
+    return np.vstack([
+            np.full((1, data.shape[1]), np.nan), 
+            data
+        ])
 
 
 
@@ -725,7 +732,7 @@ class DARMAX:
         
         bounds = ([(None, None)] * self.p  # rho
                 + [(1e-6, None)]  # omega
-                + [(1e-6, 1 - 1e-6)]  # phi
+                + [(-1 + 1e-6, 1 - 1e-6)]  # phi
                 + [(1e-6, None)] * self.p  # alpha
                 + [(1e-6, None)] * (self.p * self.d)  # gamma
                 + ([(2 + 1e-6, None)] if dist == "student-t" else [])  # nu (degrees of freedom) if student-t
