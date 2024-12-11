@@ -293,8 +293,8 @@ def deseasonalize(df, season_pattern):
 
     predictors = ['psi'] + ['D_t'] + [f'M_{i}' for i in range(2, 13)]  # D_t and M_2 to M_12
 
-    train_data = df[df['DATE'] < "2023-01-01"]
-    predict_data = df[df['DATE'] >= "2023-01-01"]
+    train_data = df[df['DATE'] < "2020-06-01"]
+    predict_data = df[df['DATE'] >= "2020-06-01"]
 
     X_train = train_data[predictors]
     y_train = train_data['DK1_spot']
@@ -323,8 +323,8 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
     import pandas as pd
     from sklearn.preprocessing import StandardScaler
 
-    datasets_train = {hour: datasets[hour][(datasets[hour]['DATE'] >= '2014-01-01') & (datasets[hour]['DATE'] < '2023-01-01')] for hour in range(24)}
-    datasets_test = {hour: datasets[hour][datasets[hour]['DATE'] >= '2023-01-01'] for hour in range(24)}
+    datasets_train = {hour: datasets[hour][(datasets[hour]['DATE'] >= '2014-01-01') & (datasets[hour]['DATE'] < '2020-06-01')] for hour in range(24)}
+    datasets_test = {hour: datasets[hour][(datasets[hour]['DATE'] > '2020-06-01') & (datasets[hour]['DATE'] < '2021-06-01')] for hour in range(24)}
 
     y_train = {hour: datasets_train[hour]['DK1_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
     y_test = {hour: datasets_test[hour]['DK1_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
