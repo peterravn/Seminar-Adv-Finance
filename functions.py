@@ -276,7 +276,7 @@ def deseasonalize(df, season_pattern):
     df['DATE'] = pd.to_datetime(df['DATE'])
 
     df['weekday'] = df['DATE'].dt.weekday  # 0=Monday, 6=Sunday
-    df['Omega_t'] = df.groupby('weekday')['DK2_spot'].transform('mean')
+    df['Omega_t'] = df.groupby('weekday')['DK1_spot'].transform('mean')
 
     df['is_weekend'] = df['DATE'].dt.weekday >= 5  # True for Saturday (5) and Sunday (6)
 
@@ -297,7 +297,7 @@ def deseasonalize(df, season_pattern):
     predict_data = df[df['DATE'] >= "2023-01-01"]
 
     X_train = train_data[predictors]
-    y_train = train_data['DK2_spot']
+    y_train = train_data['DK1_spot']
 
     model = LinearRegression()
     model.fit(X_train, y_train)
@@ -305,15 +305,15 @@ def deseasonalize(df, season_pattern):
     df['Xi_t'] = model.predict(df[predictors])
 
     if season_pattern == "short":
-        df['deseasonalized'] = df['DK2_spot'] - df['Omega_t']
+        df['deseasonalized'] = df['DK1_spot'] - df['Omega_t']
         df['seasonal_component'] = df['Omega_t']
 
     elif season_pattern == "long":
-        df['deseasonalized'] = df['DK2_spot'] - df['Xi_t']
+        df['deseasonalized'] = df['DK1_spot'] - df['Xi_t']
         df['seasonal_component'] = df['Xi_t']
 
     elif season_pattern == "both":
-        df['deseasonalized'] = df['DK2_spot'] - df['Omega_t'] - df['Xi_t']
+        df['deseasonalized'] = df['DK1_spot'] - df['Omega_t'] - df['Xi_t']
         df['seasonal_component'] = df['Omega_t'] + df['Xi_t']
     
     return df
@@ -326,8 +326,8 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
     datasets_train = {hour: datasets[hour][(datasets[hour]['DATE'] >= '2014-01-01') & (datasets[hour]['DATE'] < '2023-01-01')] for hour in range(24)}
     datasets_test = {hour: datasets[hour][datasets[hour]['DATE'] >= '2023-01-01'] for hour in range(24)}
 
-    y_train = {hour: datasets_train[hour]['DK2_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
-    y_test = {hour: datasets_test[hour]['DK2_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
+    y_train = {hour: datasets_train[hour]['DK1_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
+    y_test = {hour: datasets_test[hour]['DK1_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
 
     y_train_deseason = {hour: datasets_train[hour]['deseasonalized'].to_numpy().reshape(-1, 1) for hour in range(24)}
     y_test_deseason = {hour: datasets_test[hour]['deseasonalized'].to_numpy().reshape(-1, 1) for hour in range(24)}
