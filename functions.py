@@ -324,7 +324,7 @@ def split_data_into_series(datasets, pca_percent, regex_choice):
     from sklearn.preprocessing import StandardScaler
 
     datasets_train = {hour: datasets[hour][(datasets[hour]['DATE'] >= '2014-01-01') & (datasets[hour]['DATE'] < '2020-06-01')] for hour in range(24)}
-    datasets_test = {hour: datasets[hour][(datasets[hour]['DATE'] > '2020-06-01') & (datasets[hour]['DATE'] < '2021-06-01')] for hour in range(24)}
+    datasets_test = {hour: datasets[hour][(datasets[hour]['DATE'] >= '2020-06-01')] for hour in range(24)}
 
     y_train = {hour: datasets_train[hour]['DK1_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
     y_test = {hour: datasets_test[hour]['DK1_spot'].to_numpy().reshape(-1, 1) for hour in range(24)}
