@@ -816,3 +816,47 @@ def DARMA_sim(parameters, T, set_seed):
     return Y
 
 
+#######################################################################################################################################
+# DimReduc (plot PCA)
+#######################################################################################################################################
+
+class DimReduc:
+    def __init__(self, pct):
+
+        self.pct = pct
+        self.k = None
+        self.Z = None
+        self.plot_var = None
+    
+    def fit(self, X):
+        pca = PCA().fit(X)
+        eigvals_i = (pca.singular_values_) ** 2
+        explained_var = np.array(list(enumerate((np.cumsum(eigvals_i) / np.sum(eigvals_i)), start=1)))
+        
+        
+        k = min(np.where(explained_var[:,1] >= self.pct)[0]) + 1
+        self.k = k
+        self.plot_var = explained_var
+
+def plot_explained_variance(X, pct):
+    fig, axs = plt.subplots(4, 6, figsize=(20, 12))
+    axs = axs.flatten()
+    for i in range(24):
+        model = DimReduc(pct=pct)
+        model.fit(X[i])
+        plot = model.plot_var
+        
+        ax = axs[i]
+        ax.plot(plot[:, 0], plot[:, 1], label='Explained Variance', marker='o')
+        ax.axvline(x=model.k, color='navy', linestyle='--', label=f'Top {model.k} Principal Components')
+        ax.legend(prop={'size': 9})
+        ax.grid(True)
+        ax.set_title(f'Hour {i}')
+    
+    for j in range(i+1, len(axs)):
+        fig.delaxes(axs[j])
+    
+    plt.tight_layout()
+    plt.show()
+
+#plot_explained_variance(X, pct = 0.85)
