@@ -848,7 +848,7 @@ def plot_explained_variance(X, pct):
         
         ax = axs[i]
         ax.plot(plot[:, 0], plot[:, 1], label='Explained Variance', marker='o')
-        ax.axvline(x=model.k, color='navy', linestyle='--', label=f'Top {model.k} Principal Components')
+        ax.axvline(x=model.k, color='navy', linestyle='--', label=f'Top $k = {model.k}$ Principal Components')
         ax.legend(prop={'size': 9})
         ax.grid(True)
         ax.set_title(f'Hour {i}')
