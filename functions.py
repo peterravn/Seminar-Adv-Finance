@@ -145,18 +145,18 @@ def out_of_sample_pred(y_test, y_pred):
     denominator = np.where(denominator == 0, epsilon, denominator)
 
     smape_values = numerator / denominator
-    smape = np.mean(smape_values) * 100
+    smape = np.nanmean(smape_values) * 100
 
 
     # RMSE Calculation
-    mse = np.mean((y_pred_lagged - y_test_lagged) ** 2)
+    mse = np.nanmean((y_pred_lagged - y_test_lagged) ** 2)
     rmse = np.sqrt(mse)
 
     # rMAE Calculation
     y_naive = y_test[:-168]
 
-    numerator = np.mean(np.abs(y_test_lagged - y_pred_lagged))
-    denominator = np.mean(np.abs(y_test_lagged - y_naive))
+    numerator = np.nanmean(np.abs(y_test_lagged - y_pred_lagged))
+    denominator = np.nanmean(np.abs(y_test_lagged - y_naive))
 
     epsilon = 1e-32
     denominator = max(denominator, epsilon)
